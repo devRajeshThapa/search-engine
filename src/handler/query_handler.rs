@@ -10,7 +10,7 @@ fn get_conn() -> PooledConn {
 
 fn tokenize(query: &str) -> Vec<String> {
     query
-        .split_whitespace()
+        .split("%20")
         .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
         .filter(|w| !w.is_empty())
         .collect()
