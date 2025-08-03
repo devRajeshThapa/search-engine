@@ -99,20 +99,56 @@ fn fetch_title(url: &str) -> String {
     url.to_string() // fallback to URL if title not found
 }
 
-/// Build search results HTML
+/// Fetch favicon URL from a page
+fn fetch_favicon(url: &str) -> String {
+    if let Ok(resp) = blocking::get(url) {
+        if let Ok(body) = resp.text() {
+            let re_icon = Regex::new(r#"(?i)<link[^>]+rel=["']?(?:shortcut icon|icon|apple-touch-icon)["']?[^>]+>"#).unwrap();
+            let re_href = Regex::new(r#"href=["']([^"']+)["']"#).unwrap();
+
+            if let Some(icon_tag) = re_icon.captures(&body) {
+                if let Some(href_cap) = re_href.captures(&icon_tag[0]) {
+                    let favicon_url = href_cap[1].to_string();
+
+                    // Handle relative paths (e.g., "/favicon.ico")
+                    if favicon_url.starts_with('/') {
+                        if let Ok(parsed) = reqwest::Url::parse(url) {
+                            return format!("{}://{}{}", parsed.scheme(), parsed.host_str().unwrap_or(""), favicon_url);
+                        }
+                    }
+
+                    return favicon_url;
+                }
+            }
+        }
+    }
+
+    // Fallback to default /favicon.ico
+    if let Ok(parsed) = reqwest::Url::parse(url) {
+        return format!("{}://{}/favicon.ico", parsed.scheme(), parsed.host_str().unwrap_or(""));
+    }
+
+    String::new() // fallback empty if parsing fails
+}
+
+/// Build search results HTML with favicon and title
 fn build_search_page(urls: Vec<String>) -> String {
-    // Read template
     let template = fs::read_to_string("frontend/search.html").unwrap_or_default();
 
-    // Build links
     let mut links_html = String::new();
     for url in urls {
         let title = fetch_title(&url);
-        links_html.push_str(&format!(r#"<a href="{0}">{1}</a>"#, url, title));
+        let favicon = fetch_favicon(&url);
+
+        links_html.push_str(&format!(
+            r#"<div class="result">
+                <img src="{2}" alt="favicon" width="16" height="16" style="vertical-align:middle; margin-right:4px;">
+                <a href="{0}">{1}</a>
+              </div>"#,
+            url, title, favicon
+        ));
     }
 
-    // Inject into template
-    let page = template.replace("<!-- LINKS WILL BE INJECTED HERE -->", &links_html);
-
-    page
+    template.replace("<!-- LINKS WILL BE INJECTED HERE -->", &links_html)
 }
+
